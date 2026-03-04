@@ -1,0 +1,40 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: yukhub
+      POSTGRES_PASSWORD: yukhub_secret
+      POSTGRES_DB: yukhub
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"          # remove this in production (internal only)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yukhub -d yukhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  collector:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"          # SSE + health endpoint
+    env_file:
+      - .env
+    volumes:
+      # Telegram session file persists across restarts
+      - ./sessions:/app/sessions
+    environment:
+      # Override DATABASE_URL to use the compose service name
+      DATABASE_URL: postgresql+asyncpg://yukhub:yukhub_secret@postgres:5432/yukhub
+    stdin_open: true         # needed for first-run SMS code prompt
+    tty: true
+
+volumes:
+  pgdata:

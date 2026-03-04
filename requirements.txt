@@ -1,0 +1,22 @@
+# Telegram
+telethon==1.42.0
+
+# Web framework + SSE
+fastapi==0.135.1
+uvicorn[standard]==0.41.0
+
+# Database
+sqlalchemy[asyncio]==2.0.48
+asyncpg==0.31.0
+
+# LLM (OpenAI-compatible)
+openai==2.24.0
+
+# Config
+pydantic-settings==2.13.1
+
+# Scheduler
+apscheduler==3.11.2
+
+# Utilities
+python-dotenv==1.2.2
