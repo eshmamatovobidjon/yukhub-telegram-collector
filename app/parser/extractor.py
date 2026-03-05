@@ -146,6 +146,25 @@ napitka | ichimlik | напиток       → beverages/drinks
 parashok | порошок                 → powder
 кафель | kafel                     → ceramic tiles
 narx | цена | summa | narxi | fraxt | frakt → price/freight cost
+
+### CRITICAL: cargo_type must always be English and lowercase
+NEVER store Russian/Uzbek words in cargo_type. Always translate/normalize:
+- труба / трубы / pvc труба / пвх труба → "pipes"
+- Гранулы / гранулы / granules / granula → "pellets"
+- napitka / напитка → "beverages"
+- пряжа / pryaja → "yarn"
+- трактор / traktor → "machinery"
+- комбикорн / kombikorn → "animal feed"
+- картон / karton → "cardboard"
+- арматура / armatura → "rebar"
+
+### Brand names → cargo_type
+- Pepsi / Пепси / Пепсi / Ппепси / Ппеpsi (any misspelling) → cargo_type = "beverages"
+- Cola / Кола / кока-кола → cargo_type = "beverages"
+- Paddonda Pepsi / Paddonda suv / paddonda cola → cargo on pallet → cargo_type = "beverages"
+- Chips / Чипс / чипс (standalone cargo mention, not brand modifier) → cargo_type = "chips"
+- Shakar / шакар / сахар → cargo_type = "sugar"
+- Suv / вода (as cargo, not in compound words) → cargo_type = "water"
 so'm | сум | UZS                   → Uzbek Som (UZS)
 mln | млн                          → million (e.g. 5 mln = 5,000,000)
 bugun | сегодня | hozir | hozirga  → today
@@ -182,10 +201,17 @@ yoki | или                         → or (e.g. "tent yoki ref" means tent OR
 - truck_tonnage should only contain the load capacity in tonnes (e.g. 20, 22, 25)
 - If a message says "4ta" with no explicit tonnage, leave truck_tonnage = null
 
-### CRITICAL: "Hajm: N tonna" vs "N m3" 
-- "Hajm: 25 tonna" or "Og'irlik: 25.0 tonna" → cargo_weight_kg = 25000
-- "Hajm: 125 kubali" or "125m3" or "96к" or "96 kub" → cargo_volume_m3 = 125/96
-- "Тент 96" or "Тент 96м3" → truck has 96m³ capacity → cargo_volume_m3 only if explicitly stated as cargo volume
+### CRITICAL: tonnage range is NOT a date
+Patterns like "23-24. Тонн", "20-22 tonna", "23-24 т" are WEIGHT RANGES, not dates.
+- "23-24. Тонн" → cargo_weight_kg = 23500 (midpoint), pickup_date = null, delivery_date = null
+- NEVER interpret "NN-MM. Тонн" or "NN-MM tonna" as a pickup or delivery date
+
+### Phone numbers inside Telegram Markdown formatting
+Telegram bold/italic markers (`**`, `__`, `*`) may wrap phone numbers. Strip them to extract the number.
+- `****910458115**` → contact_phone = "910458115"
+- `**910458115**` → contact_phone = "910458115"
+- `__910458115__` → contact_phone = "910458115"
+A number at the very start of a message (before any route text) is also a phone number — extract it.
 
 ### "kk" abbreviation
 - "kk" appearing BEFORE or AFTER a phone number = "call me" — NOT part of phone number, NOT a name
@@ -220,20 +246,31 @@ When a post lists MULTIPLE routes, extract the FIRST route only.
 #SURXONDARYO, #BUXORO, #NAMANGAN, etc. at end of post → use as dest_region hint when ambiguous.
 
 ### Price interpretation
-- "250 som" alone (without /km or /kg) when it's a small number = likely price per km or per kg, store as price_raw as-is, do NOT convert to price_usd
-- "5 mln", "8 mln", "6.5 млн" = total freight price in UZS → convert to USD
+- "N mln" or "N млн" means N × 1,000,000 UZS. Divide by 12,700 to get USD.
+  Examples: "3.5 mln" = 3,500,000 UZS ÷ 12,700 = 275.59 USD (NOT 3.5 ÷ 12700 = 0.00028)
+            "5 млн" = 5,000,000 ÷ 12,700 = 393.70 USD
+            "7 500 000" = 7,500,000 ÷ 12,700 = 590.55 USD
+- Range prices "22-24 млн" → use midpoint: (22+24)/2 × 1,000,000 ÷ 12,700 = 1811 USD; store "22-24 млн" in price_raw
+- "4.200" or "4 200" in Russian/Uzbek context = 4,200 (period/space as thousands separator) → 4,200 ÷ 12,700 = 0.33 USD (store "4.200" in price_raw)
+- "4200 000" = 4,200,000 UZS ÷ 12,700 = 330.71 USD
+- Small standalone number like "250 som", "200 sum" without context = per-unit rate, do NOT convert, set price_usd = null
 - "Narxi kelishiladi" / "Fraxt" / "Oплата договорная" = negotiable → price_raw = "negotiable", price_usd = null
-- "Fraxt" alone as price → price_raw = "negotiable"
 
 ### dest_country rules
 - All Uzbekistan regions INCLUDING Karakalpakstan → dest_country = "Uzbekistan"
 - Only set dest_country to Russia, Kazakhstan etc. when the origin/dest is explicitly in those countries
 
-### is_cargo_request = false for these patterns
-- Same city as origin AND destination (e.g. "TOSHKENT - TOSHKENT") unless it's a within-city delivery
-- Pure advertising posts with no specific route
-- Bot promotion messages (@lorry_filter_bot etc.) with no cargo details
-- Messages from dispatcher aggregators that are just forwarding other people's posts (no new info)
+### is_cargo_request: when to accept or reject
+
+Set is_cargo_request = TRUE when the post has ALL of:
+- A clear origin → destination route (two different cities)
+- A contact phone number
+This applies even if cargo_type is unknown. Truck-availability posts (driver advertising a route with their truck, no cargo named) are ALSO valid — set true and leave cargo_type null.
+
+Set is_cargo_request = FALSE only when:
+- There is NO origin-destination route at all, OR
+- There is NO contact phone number, OR
+- The message is a pure greeting, small talk, bot promotion, or completely off-topic
 
 ## Truck type normalisation
 Map any truck body description to one of:
